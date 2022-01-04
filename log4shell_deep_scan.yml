@@ -1,0 +1,75 @@
+---
+- name: run log4shell deep scan
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: locate log4shell_deep_scan.sh
+      set_fact:
+        _log4shell_deep_scan: "{{ lookup('first_found', paths, errors='ignore') | default(default_path, True) }}"
+      vars:
+        paths:
+          - log4shell_deep_scan.sh
+          - files/log4shell_deep_scan.sh
+        default_path: https://raw.githubusercontent.com/rtkwlf/wolf-tools/main/log4shell/log4shell_deep_scan.sh
+
+    - name: download and execute log4shell_deep_scan.sh
+      block:
+        - name: create tmp directory
+          tempfile:
+            state: directory
+          register: r_tmp
+
+        - name: copy log4shell_deep_scan.sh
+          copy:
+            src: "{{ _log4shell_deep_scan }}"
+            dest: "{{ r_tmp.path }}/log4shell_deep_scan.sh"
+            mode: 0750
+          when: _log4shell_deep_scan is regex('^/')
+
+        - name: download log4shell_deep_scan.sh
+          get_url:
+            url: "{{ _log4shell_deep_scan }}"
+            dest: "{{ r_tmp.path }}/log4shell_deep_scan.sh"
+            mode: 0750
+          when: _log4shell_deep_scan is regex('^http')
+
+        - name: execute log4shell_deep_scan.sh
+          command: >
+            {{ r_tmp.path }}/log4shell_deep_scan.sh
+            '/'
+            {{ r_tmp.path }}/output.json
+          args:
+            chdir: "{{ r_tmp.path }}"
+          async: 600
+          poll: 30
+
+        - name: slurp log4shell_deep_scan.sh outout
+          slurp:
+            src: "{{ r_tmp.path }}/output.json"
+          register: r_log4shell_deep_scan_output
+
+        - name: load log4shell_deep_scan.sh outout as json
+          set_fact:
+            _log4shell_deep_scan_output: "{{ r_log4shell_deep_scan_output['content'] | b64decode | from_json }}"
+
+      rescue:
+        - name: download or execution failed
+          fail:
+            msg: "failed to run log4shell_deep_scan.sh"
+
+      always:
+        - name: cleanup tmp directory
+          file:
+            path: "{{ r_tmp.path }}"
+            state: absent
+
+    - name: assert log4shell_deep_scan.sh passed
+      assert:
+        that:
+          - _log4shell_deep_scan_output is defined
+          - _log4shell_deep_scan_output is not mapping
+          - _log4shell_deep_scan_output is iterable
+          - _log4shell_deep_scan_output is not string
+          - _log4shell_deep_scan_output | length == 1
+          - _log4shell_deep_scan_output[0]['result'] == "PASS"
