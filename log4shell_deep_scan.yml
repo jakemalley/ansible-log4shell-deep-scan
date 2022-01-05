@@ -42,6 +42,8 @@
             {{ r_tmp.path }}/output.json
           args:
             chdir: "{{ r_tmp.path }}"
+          register: r_log4shell_deep_scan_cmd
+          failed_when: r_log4shell_deep_scan_cmd.rc | int not in [0, 1]
           async: 600
           poll: 30
 
@@ -69,8 +71,10 @@
       set_fact:
         _scan_results: "{{ _scan_results | default([]) + hostvars[item]['_log4shell_deep_scan_output'] }}"
       run_once: true
-      loop: "{{ hostvars.keys() | default([]) }}"
-      when: save_scan_output | default(true, true) | bool
+      loop: "{{ hostvars.keys() | list }}"
+      when:
+        - save_scan_output | default(true, true) | bool
+        - item in ansible_play_hosts
 
     - name: save scan results
       copy:
