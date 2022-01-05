@@ -36,6 +36,7 @@
 
         - name: execute log4shell_deep_scan.sh
           command: >
+            sh
             {{ r_tmp.path }}/log4shell_deep_scan.sh
             '/'
             {{ r_tmp.path }}/output.json
@@ -63,6 +64,23 @@
           file:
             path: "{{ r_tmp.path }}"
             state: absent
+
+    - name: compile scan results
+      set_fact:
+        _scan_results: "{{ _scan_results | default([]) + hostvars[item]['_log4shell_deep_scan_output'] }}"
+      run_once: true
+      loop: "{{ hostvars.keys() | default([]) }}"
+      when: save_scan_output | default(true, true) | bool
+
+    - name: save scan results
+      copy:
+        content: "{{ _scan_results | to_json }}"
+        dest: "log4shell_deep_scan.output.{{ lookup('pipe', 'date +%s') }}.json"
+        mode: 0640
+      run_once: true
+      become: false
+      delegate_to: localhost
+      when: save_scan_output | default(true, true) | bool
 
     - name: assert log4shell_deep_scan.sh passed
       assert:
